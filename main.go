@@ -28,7 +28,11 @@ func handleClient(conn net.Conn, db *sql.DB) {
 		}
 	}
 	
-	rows, _ := db.Query("SELECT id, name, current_episode, total_episodes FROM series")
+	rows, err := db.Query("SELECT id, name, current_episode, total_episodes FROM series")
+	if err != nil {
+		log.Println("Error en query:", err)
+		return
+	}
 	defer rows.Close()
 
 	html := `<html>
@@ -48,7 +52,11 @@ func handleClient(conn net.Conn, db *sql.DB) {
 	var actual int
 	var total int
 	for rows.Next() {
-		rows.Scan(&id, &serie, &actual, &total)
+		err := rows.Scan(&id, &serie, &actual, &total)
+		if err != nil {
+			log.Println("Error en scan:", err)
+			return
+		}
 		html += fmt.Sprintf("<tr><td>%d</td><td>%s</td><td>%d</td><td>%d</td></tr>", id, serie, actual, total)
 	}
 	html += "</table></body></html>"
@@ -73,7 +81,10 @@ func main() {
 	}
 	defer listener.Close()
 
-	db, _ := sql.Open("sqlite", "file:series.db")
+	db, err := sql.Open("sqlite", "file:series.db")
+	if err != nil {
+		log.Fatal("Error abriendo base de datos:", err)
+	}
 	defer db.Close()
 
 	log.Println("Servidor escuchando en puerto 8080...")
