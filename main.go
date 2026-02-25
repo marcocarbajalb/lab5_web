@@ -59,7 +59,11 @@ func handleClient(conn net.Conn, db *sql.DB) {
 		}
 		html += fmt.Sprintf("<tr><td>%d</td><td>%s</td><td>%d</td><td>%d</td></tr>", id, serie, actual, total)
 	}
-	html += "</table></body></html>"
+	html += `</table>
+	<script>
+		alert("Hola! Bienvenid@ al registro de series");
+	</script>
+	</body></html>`
 
 	response := fmt.Sprintf(
 		"HTTP/1.1 200 OK\r\n"+
