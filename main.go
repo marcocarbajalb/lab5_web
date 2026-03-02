@@ -55,6 +55,8 @@ func handleClient(conn net.Conn, db *sql.DB) {
 		response = handleCreate(reader, contentLength, db)
 	case method == "POST" && strings.HasPrefix(path, "/update"):
 		response = handleUpdate(path, db)
+	case method == "POST" && strings.HasPrefix(path, "/decrease"):
+    	response = handleDecrease(path, db)
 	default:
 		response = buildResponse("404 Not Found", "<h1>404 - No encontrado</h1>")
 	}
@@ -79,6 +81,7 @@ func handleIndex(db *sql.DB) string {
 
 	html := `<html>
 	<head>
+	<meta charset="UTF-8">
 	<title>Registro de series</title>
 	<style>
 		table { border-collapse: collapse; }
@@ -88,7 +91,7 @@ func handleIndex(db *sql.DB) string {
 	<body>
 	<h1>Registro de series</h1>
 	<table>
-	<tr><th>#</th><th>Nombre de la serie</th><th>Episodio actual</th><th>Total de episodios</th><th>Episodio visto</th></tr>`
+	<tr><th>#</th><th>Nombre de la serie</th><th>Episodio actual</th><th>Total de episodios</th><th>Progreso</th></tr>`
 
 	var id, actual, total int
 	var serie string
@@ -98,9 +101,26 @@ func handleIndex(db *sql.DB) string {
 			log.Println("Error en scan:", err)
 			return buildResponse("500 Internal Server Error", "<h1>Error leyendo datos</h1>")
 		}
+		completado := ""
+		if actual == total {
+			completado = " <strong>¡Completa!</strong>"
+		}
+
 		html += fmt.Sprintf(
-			`<tr><td>%d</td><td>%s</td><td>%d</td><td>%d</td><td><button onclick="nextEpisode(%d)">+1</button></td></tr>`,
-			id, serie, actual, total, id,
+			`<tr>
+				<td>%d</td>
+				<td>%s%s</td>
+				<td>%d</td>
+				<td>%d</td>
+				<td>
+					<progress value="%d" max="%d"></progress>
+				</td>
+				<td>
+					<button onclick="decreaseEpisode(%d)">-1</button>
+					<button onclick="nextEpisode(%d)">+1</button>
+				</td>
+			</tr>`,
+			id, serie, completado, actual, total, actual, total, id, id,
 		)
 	}
 
@@ -115,6 +135,12 @@ func handleIndex(db *sql.DB) string {
 			await fetch(url, { method: "POST" })
 			location.reload()
 		}
+
+		async function decreaseEpisode(id) {
+			const url = "/decrease?id=" + id
+			await fetch(url, { method: "POST" })
+			location.reload()
+		}
 	</script>
 	</body></html>`
 
@@ -123,7 +149,7 @@ func handleIndex(db *sql.DB) string {
 
 func handleCreateForm() string {
 	body := `<html>
-	<head><title>Agregar una nueva serie</title></head>
+	<head><meta charset="UTF-8"><title>Agregar una nueva serie</title></head>
 	<body>
 	<h1>Agregar una nueva serie</h1>
 	<form method="POST" action="/create">
@@ -209,6 +235,33 @@ func handleUpdate(path string, db *sql.DB) string {
 	}
 
 	return "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nok"
+}
+
+func handleDecrease(path string, db *sql.DB) string {
+    parts := strings.SplitN(path, "?", 2)
+    if len(parts) < 2 {
+        return buildResponse("400 Bad Request", "<h1>Falta el id</h1>")
+    }
+
+    params, err := url.ParseQuery(parts[1])
+    if err != nil {
+        log.Println("Error parseando params:", err)
+        return buildResponse("400 Bad Request", "<h1>Error parseando parámetros</h1>")
+    }
+
+    id := params.Get("id")
+    log.Printf("Decrementando episodio de serie id=%s", id)
+
+    _, err = db.Exec(
+        "UPDATE series SET current_episode = current_episode - 1 WHERE id = ? AND current_episode > 1",
+        id,
+    )
+    if err != nil {
+        log.Println("Error en decrease:", err)
+        return buildResponse("500 Internal Server Error", "<h1>Error actualizando</h1>")
+    }
+
+    return "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nok"
 }
 
 func main() {
