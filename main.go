@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"os"
 
 	_ "modernc.org/sqlite"
 )
@@ -57,6 +58,8 @@ func handleClient(conn net.Conn, db *sql.DB) {
 		response = handleUpdate(path, db)
 	case method == "POST" && strings.HasPrefix(path, "/decrease"):
     	response = handleDecrease(path, db)
+	case method == "GET" && strings.HasPrefix(path, "/static/"):
+    	response = handleStatic(path)
 	default:
 		response = buildResponse("404 Not Found", "<h1>404 - No encontrado</h1>")
 	}
@@ -83,15 +86,12 @@ func handleIndex(db *sql.DB) string {
 	<head>
 	<meta charset="UTF-8">
 	<title>Registro de series</title>
-	<style>
-		table { border-collapse: collapse; }
-		td, th { border: 1px solid black; padding: 8px; }
-	</style>
+	<link rel="stylesheet" href="/static/styles.css">
 	</head>
 	<body>
 	<h1>Registro de series</h1>
 	<table>
-	<tr><th>#</th><th>Nombre de la serie</th><th>Episodio actual</th><th>Total de episodios</th><th>Progreso</th></tr>`
+	<tr><th>#</th><th>Nombre de la serie</th><th>Episodio actual</th><th>Total de episodios</th><th>Progreso</th><th>Acción</th></tr>`
 
 	var id, actual, total int
 	var serie string
@@ -116,8 +116,8 @@ func handleIndex(db *sql.DB) string {
 					<progress value="%d" max="%d"></progress>
 				</td>
 				<td>
-					<button onclick="decreaseEpisode(%d)">-1</button>
-					<button onclick="nextEpisode(%d)">+1</button>
+					<button class="btn-decrease" onclick="decreaseEpisode(%d)">-1</button>
+					<button class="btn-increase" onclick="nextEpisode(%d)">+1</button>
 				</td>
 			</tr>`,
 			id, serie, completado, actual, total, actual, total, id, id,
@@ -127,21 +127,7 @@ func handleIndex(db *sql.DB) string {
 	html += `</table>
 	<br></br>
 	<a href="/create">Agregar una nueva serie</a>
-	<script>
-		alert("Hola! Bienvenid@ al registro de series");
-
-		async function nextEpisode(id) {
-			const url = "/update?id=" + id
-			await fetch(url, { method: "POST" })
-			location.reload()
-		}
-
-		async function decreaseEpisode(id) {
-			const url = "/decrease?id=" + id
-			await fetch(url, { method: "POST" })
-			location.reload()
-		}
-	</script>
+	<script src="/static/script.js"></script>
 	</body></html>`
 
 	return buildResponse("200 OK", html)
@@ -149,7 +135,11 @@ func handleIndex(db *sql.DB) string {
 
 func handleCreateForm() string {
 	body := `<html>
-	<head><meta charset="UTF-8"><title>Agregar una nueva serie</title></head>
+	<head>
+		<meta charset="UTF-8">
+		<title>Agregar una nueva serie</title>
+		<link rel="stylesheet" href="/static/styles.css">
+	</head>
 	<body>
 	<h1>Agregar una nueva serie</h1>
 	<form method="POST" action="/create">
@@ -162,7 +152,7 @@ func handleCreateForm() string {
 		<label>Total de episodios:<br>
 			<input type="number" name="total_episodes" min="1" value="1" required>
 		</label><br><br>
-		<button type="submit">Agregar</button>
+		<button type="submit" class="btn-submit">Agregar</button>
 	</form>
 	<br>
 	<a href="/">Volver</a>
@@ -262,6 +252,27 @@ func handleDecrease(path string, db *sql.DB) string {
     }
 
     return "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nok"
+}
+
+func handleStatic(path string) string {
+    filePath := "." + path
+
+    content, err := os.ReadFile(filePath)
+    if err != nil {
+        return buildResponse("404 Not Found", "<h1>Archivo no encontrado</h1>")
+    }
+
+    contentType := "text/plain"
+    if strings.HasSuffix(path, ".css") {
+        contentType = "text/css"
+    } else if strings.HasSuffix(path, ".js") {
+        contentType = "application/javascript"
+    }
+
+    return fmt.Sprintf(
+        "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %d\r\n\r\n%s",
+        contentType, len(content), string(content),
+    )
 }
 
 func main() {
