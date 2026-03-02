@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/url"
+	"strconv"
 	"strings"
 
 	_ "modernc.org/sqlite"
@@ -22,18 +24,23 @@ func handleClient(conn net.Conn, db *sql.DB) {
 		return
 	}
 
-	parts := strings.Fields(requestLine) // ["GET", "/", "HTTP/1.1"]
+	parts := strings.Fields(requestLine)
 	if len(parts) < 2 {
 		return
 	}
 	method := parts[0]
 	path := parts[1]
 
-	// Leer y descartar los headers
+	// Leer headers
+	contentLength := 0
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil || line == "\r\n" {
 			break
+		}
+		if strings.HasPrefix(line, "Content-Length:") {
+			lengthStr := strings.TrimSpace(strings.TrimPrefix(line, "Content-Length:"))
+			contentLength, _ = strconv.Atoi(lengthStr)
 		}
 	}
 
@@ -44,6 +51,8 @@ func handleClient(conn net.Conn, db *sql.DB) {
 		response = handleIndex(db)
 	case method == "GET" && path == "/create":
 		response = handleCreateForm()
+	case method == "POST" && path == "/create":
+		response = handleCreate(reader, contentLength, db)
 	default:
 		response = buildResponse("404 Not Found", "<h1>404 - No encontrado</h1>")
 	}
@@ -51,7 +60,6 @@ func handleClient(conn net.Conn, db *sql.DB) {
 	conn.Write([]byte(response))
 }
 
-// Construye una respuesta HTTP genérica
 func buildResponse(status string, body string) string {
 	return fmt.Sprintf(
 		"HTTP/1.1 %s\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n%s",
@@ -102,9 +110,65 @@ func handleIndex(db *sql.DB) string {
 	return buildResponse("200 OK", html)
 }
 
-// Handler para GET /create
 func handleCreateForm() string {
-	return buildResponse("200 OK", "<h1>Crear serie</h1><a href='/'>Volver</a>")
+	body := `<html>
+	<head><title>Agregar serie</title></head>
+	<body>
+	<h1>Agregar serie</h1>
+	<form method="POST" action="/create">
+		<label>Nombre de la serie:<br>
+			<input type="text" name="series_name" required>
+		</label><br><br>
+		<label>Episodio actual:<br>
+			<input type="number" name="current_episode" min="1" value="1" required>
+		</label><br><br>
+		<label>Total de episodios:<br>
+			<input type="number" name="total_episodes" min="1" required>
+		</label><br><br>
+		<button type="submit">Agregar</button>
+	</form>
+	<br>
+	<a href="/">Volver</a>
+	</body></html>`
+
+	return buildResponse("200 OK", body)
+}
+
+func handleCreate(reader *bufio.Reader, contentLength int, db *sql.DB) string {
+	
+	// Leer exactamente contentLength bytes del cuerpo
+	body := make([]byte, contentLength)
+	_, err := reader.Read(body)
+	if err != nil {
+		log.Println("Error leyendo body:", err)
+		return buildResponse("400 Bad Request", "<h1>Error leyendo el cuerpo</h1>")
+	}
+
+	// Parsear los campos del formulario
+	values, err := url.ParseQuery(string(body))
+	if err != nil {
+		log.Println("Error parseando body:", err)
+		return buildResponse("400 Bad Request", "<h1>Error parseando el formulario</h1>")
+	}
+
+	name := values.Get("series_name")
+	currentEp := values.Get("current_episode")
+	totalEps := values.Get("total_episodes")
+	
+	log.Printf("Nueva serie: nombre=%s, ep_actual=%s, ep_total=%s", name, currentEp, totalEps)
+
+	// Insertar en la base de datos
+	_, err = db.Exec(
+		"INSERT INTO series (name, current_episode, total_episodes) VALUES (?, ?, ?)",
+		name, currentEp, totalEps,
+	)
+	if err != nil {
+		log.Println("Error en insert:", err)
+		return buildResponse("500 Internal Server Error", "<h1>Error guardando en la base de datos</h1>")
+	}
+
+	// Redirigir con 303 POST/Redirect/GET
+	return "HTTP/1.1 303 See Other\r\nLocation: /\r\n\r\n"
 }
 
 func main() {
