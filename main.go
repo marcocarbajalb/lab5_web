@@ -50,6 +50,8 @@ func handleClient(conn net.Conn, db *sql.DB) {
 	switch {
 	case method == "GET" && path == "/":
 		response = handleIndex(db)
+	case method == "GET" && strings.HasPrefix(path, "/static/"):
+    	response = handleStatic(path)
 	case method == "GET" && path == "/create":
 		response = handleCreateForm()
 	case method == "POST" && path == "/create":
@@ -58,8 +60,8 @@ func handleClient(conn net.Conn, db *sql.DB) {
 		response = handleUpdate(path, db)
 	case method == "POST" && strings.HasPrefix(path, "/decrease"):
     	response = handleDecrease(path, db)
-	case method == "GET" && strings.HasPrefix(path, "/static/"):
-    	response = handleStatic(path)
+	case method == "DELETE" && strings.HasPrefix(path, "/delete"):
+    	response = handleDelete(path, db)
 	default:
 		response = buildResponse("404 Not Found", "<h1>404 - No encontrado</h1>")
 	}
@@ -118,9 +120,10 @@ func handleIndex(db *sql.DB) string {
 				<td>
 					<button class="btn-decrease" onclick="decreaseEpisode(%d)">-1</button>
 					<button class="btn-increase" onclick="nextEpisode(%d)">+1</button>
+					<button class="btn-delete" onclick="deleteSerie(%d)">🗑</button>
 				</td>
 			</tr>`,
-			id, serie, completado, actual, total, actual, total, id, id,
+			id, serie, completado, actual, total, actual, total, id, id, id,
 		)
 	}
 
@@ -273,6 +276,30 @@ func handleStatic(path string) string {
         "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %d\r\n\r\n%s",
         contentType, len(content), string(content),
     )
+}
+
+func handleDelete(path string, db *sql.DB) string {
+    parts := strings.SplitN(path, "?", 2)
+    if len(parts) < 2 {
+        return buildResponse("400 Bad Request", "<h1>Falta el id</h1>")
+    }
+
+    params, err := url.ParseQuery(parts[1])
+    if err != nil {
+        log.Println("Error parseando params:", err)
+        return buildResponse("400 Bad Request", "<h1>Error parseando parámetros</h1>")
+    }
+
+    id := params.Get("id")
+    log.Printf("Eliminando serie id=%s", id)
+
+    _, err = db.Exec("DELETE FROM series WHERE id = ?", id)
+    if err != nil {
+        log.Println("Error en delete:", err)
+        return buildResponse("500 Internal Server Error", "<h1>Error eliminando</h1>")
+    }
+
+    return "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nok"
 }
 
 func main() {
