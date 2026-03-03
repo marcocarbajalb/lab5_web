@@ -62,6 +62,10 @@ func handleClient(conn net.Conn, db *sql.DB) {
     	response = handleDecrease(path, db)
 	case method == "DELETE" && strings.HasPrefix(path, "/delete"):
     	response = handleDelete(path, db)
+	case method == "GET" && strings.HasPrefix(path, "/edit"):
+		response = handleEditForm(path, db)
+	case method == "PUT" && path == "/edit":
+		response = handleEdit(reader, contentLength, db)
 	default:
 		response = buildResponse("404 Not Found", "<h1>404 - No encontrado</h1>")
 	}
@@ -121,9 +125,10 @@ func handleIndex(db *sql.DB) string {
 					<button class="btn-decrease" onclick="decreaseEpisode(%d)">-1</button>
 					<button class="btn-increase" onclick="nextEpisode(%d)">+1</button>
 					<button class="btn-delete" onclick="deleteSerie(%d)">🗑</button>
+					<button class="btn-edit" onclick="window.location.href='/edit?id=%d'">✏️</button>
 				</td>
 			</tr>`,
-			id, serie, completado, actual, total, actual, total, id, id, id,
+			id, serie, completado, actual, total, actual, total, id, id, id, id,
 		)
 	}
 
@@ -297,6 +302,85 @@ func handleDelete(path string, db *sql.DB) string {
     if err != nil {
         log.Println("Error en delete:", err)
         return buildResponse("500 Internal Server Error", "<h1>Error eliminando</h1>")
+    }
+
+    return "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nok"
+}
+
+func handleEditForm(path string, db *sql.DB) string {
+    parts := strings.SplitN(path, "?", 2)
+    if len(parts) < 2 {
+        return buildResponse("400 Bad Request", "<h1>Falta el id</h1>")
+    }
+
+    params, _ := url.ParseQuery(parts[1])
+    id := params.Get("id")
+
+    var name string
+    var currentEp, totalEps int
+    err := db.QueryRow("SELECT name, current_episode, total_episodes FROM series WHERE id = ?", id).
+        Scan(&name, &currentEp, &totalEps)
+    if err != nil {
+        log.Println("Error buscando serie:", err)
+        return buildResponse("404 Not Found", "<h1>Serie no encontrada</h1>")
+    }
+
+    body := fmt.Sprintf(`<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Editar serie</title>
+        <link rel="stylesheet" href="/static/styles.css">
+    </head>
+    <body>
+    <h1>Editar serie</h1>
+    <form id="form-editar">
+        <input type="hidden" name="id" value="%s">
+        <label>Nombre de la serie:
+            <input type="text" name="series_name" value="%s" required>
+        </label>
+        <label>Episodio actual:
+            <input type="number" name="current_episode" min="1" value="%d" required>
+        </label>
+        <label>Total de episodios:
+            <input type="number" name="total_episodes" min="1" value="%d" required>
+        </label>
+        <button type="submit" class="btn-submit">Guardar cambios</button>
+    </form>
+    <a href="/">← Volver</a>
+    <script src="/static/script.js"></script>
+    </body></html>`, id, name, currentEp, totalEps)
+
+    return buildResponse("200 OK", body)
+}
+
+func handleEdit(reader *bufio.Reader, contentLength int, db *sql.DB) string {
+    body := make([]byte, contentLength)
+    _, err := reader.Read(body)
+    if err != nil {
+        log.Println("Error leyendo body:", err)
+        return buildResponse("400 Bad Request", "<h1>Error leyendo el cuerpo</h1>")
+    }
+
+    values, err := url.ParseQuery(string(body))
+    if err != nil {
+        log.Println("Error parseando body:", err)
+        return buildResponse("400 Bad Request", "<h1>Error parseando el formulario</h1>")
+    }
+
+    id := values.Get("id")
+    name := values.Get("series_name")
+    currentEp := values.Get("current_episode")
+    totalEps := values.Get("total_episodes")
+
+    log.Printf("Editando serie id=%s: nombre=%s, ep_actual=%s, ep_total=%s", id, name, currentEp, totalEps)
+
+    _, err = db.Exec(
+        "UPDATE series SET name = ?, current_episode = ?, total_episodes = ? WHERE id = ?",
+        name, currentEp, totalEps, id,
+    )
+    if err != nil {
+        log.Println("Error en update:", err)
+        return buildResponse("500 Internal Server Error", "<h1>Error actualizando</h1>")
     }
 
     return "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nok"

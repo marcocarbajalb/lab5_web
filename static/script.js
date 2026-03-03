@@ -16,3 +16,19 @@ async function deleteSerie(id) {
     await fetch("/delete?id=" + id, { method: "DELETE" })
     location.reload()
 }
+
+document.addEventListener("DOMContentLoaded", () => {
+    const form = document.getElementById("form-editar")
+    if (form) {
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault()
+            const data = new URLSearchParams(new FormData(form))
+            await fetch("/edit", {
+                method: "PUT",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: data.toString()
+            })
+            window.location.href = "/"
+        })
+    }
+})
