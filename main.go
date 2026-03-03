@@ -174,7 +174,7 @@ func handleCreateForm() string {
 		<button type="submit" class="btn-submit">Agregar</button>
 	</form>
 	<br>
-	<a href="/">Volver</a>
+	<a href="/"> ← Volver </a>
 	</body></html>`
 
 	return buildResponse("200 OK", body)
@@ -200,6 +200,19 @@ func handleCreate(reader *bufio.Reader, contentLength int, db *sql.DB) string {
 	name := values.Get("series_name")
 	currentEp := values.Get("current_episode")
 	totalEps := values.Get("total_episodes")
+
+	currentEpInt, _ := strconv.Atoi(currentEp)
+	totalEpsInt, _ := strconv.Atoi(totalEps)
+
+	if currentEpInt > totalEpsInt {
+		return buildResponse("400 Bad Request", `<html>
+		<head><meta charset="UTF-8"><link rel="stylesheet" href="/static/styles.css"></head>
+		<body>
+		<h1>Error</h1>
+		<p>El episodio actual no puede ser mayor al total de episodios.</p>
+		<a href="/create"> ← Volver </a>
+		</body></html>`)
+	}
 
 	log.Printf("Nueva serie: nombre=%s, ep_actual=%s, ep_total=%s", name, currentEp, totalEps)
 
@@ -357,7 +370,7 @@ func handleEditForm(path string, db *sql.DB) string {
         </label>
         <button type="submit" class="btn-submit">Guardar cambios</button>
     </form>
-    <a href="/">← Volver</a>
+    <a href="/"> ← Volver </a>
     <script src="/static/script.js"></script>
     </body></html>`, id, name, currentEp, totalEps)
 
@@ -382,6 +395,19 @@ func handleEdit(reader *bufio.Reader, contentLength int, db *sql.DB) string {
     name := values.Get("series_name")
     currentEp := values.Get("current_episode")
     totalEps := values.Get("total_episodes")
+
+	currentEpInt, _ := strconv.Atoi(currentEp)
+	totalEpsInt, _ := strconv.Atoi(totalEps)
+
+	if currentEpInt > totalEpsInt {
+		return buildResponse("400 Bad Request", `<html>
+		<head><meta charset="UTF-8"><link rel="stylesheet" href="/static/styles.css"></head>
+		<body>
+		<h1>Error</h1>
+		<p>El episodio actual no puede ser mayor al total de episodios.</p>
+		<a href="/"> ← Volver </a>
+		</body></html>`)
+	}
 
     log.Printf("Editando serie id=%s: nombre=%s, ep_actual=%s, ep_total=%s", id, name, currentEp, totalEps)
 

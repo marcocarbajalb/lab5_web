@@ -23,12 +23,19 @@ document.addEventListener("DOMContentLoaded", () => {
         form.addEventListener("submit", async (e) => {
             e.preventDefault()
             const data = new URLSearchParams(new FormData(form))
-            await fetch("/edit", {
+            const response = await fetch("/edit", {
                 method: "PUT",
                 headers: { "Content-Type": "application/x-www-form-urlencoded" },
                 body: data.toString()
             })
-            window.location.href = "/"
+            if (response.ok) {
+                window.location.href = "/"
+            } else {
+                const errorHtml = await response.text()
+                document.open()
+                document.write(errorHtml)
+                document.close()
+            }
         })
     }
 })
