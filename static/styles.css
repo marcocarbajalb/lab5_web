@@ -116,3 +116,25 @@ input {
 }
 
 .btn-submit:hover { background-color: #555; }
+
+.estrella {
+    font-size: 22px;
+    cursor: pointer;
+    color: #ccc;
+}
+
+.estrella.activa {
+    color: #FFD700;
+}
+
+.estrella:hover {
+    color: #FFD700;
+}
+
+.th-accion {
+    min-width: 180px;
+}
+
+.th-nombre {
+    min-width: 200px;
+}

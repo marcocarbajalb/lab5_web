@@ -32,3 +32,8 @@ document.addEventListener("DOMContentLoaded", () => {
         })
     }
 })
+
+async function setRating(seriesId, rating) {
+    await fetch(`/rating?series_id=${seriesId}&rating=${rating}`, { method: "POST" })
+    location.reload()
+}

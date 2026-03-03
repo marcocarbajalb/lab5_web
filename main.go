@@ -66,6 +66,8 @@ func handleClient(conn net.Conn, db *sql.DB) {
 		response = handleEditForm(path, db)
 	case method == "PUT" && path == "/edit":
 		response = handleEdit(reader, contentLength, db)
+	case method == "POST" && strings.HasPrefix(path, "/rating"):
+    	response = handleRating(path, db)
 	default:
 		response = buildResponse("404 Not Found", "<h1>404 - No encontrado</h1>")
 	}
@@ -81,7 +83,9 @@ func buildResponse(status string, body string) string {
 }
 
 func handleIndex(db *sql.DB) string {
-	rows, err := db.Query("SELECT id, name, current_episode, total_episodes FROM series")
+	rows, err := db.Query(`SELECT s.id, s.name, s.current_episode, s.total_episodes, COALESCE(r.rating, 0)
+	FROM series s
+	LEFT JOIN ratings r ON s.id = r.series_id`)
 	if err != nil {
 		log.Println("Error en query:", err)
 		return buildResponse("500 Internal Server Error", "<h1>Error en la base de datos</h1>")
@@ -97,12 +101,12 @@ func handleIndex(db *sql.DB) string {
 	<body>
 	<h1>Registro de series</h1>
 	<table>
-	<tr><th>#</th><th>Nombre de la serie</th><th>Episodio actual</th><th>Total de episodios</th><th>Progreso</th><th>Acción</th></tr>`
+	<tr><th>#</th><th class="th-nombre">Nombre de la serie</th><th>Episodio actual</th><th>Total de episodios</th><th>Progreso</th><th>Rating</th><th class="th-accion">Acción</th></tr>`
 
-	var id, actual, total int
+	var id, actual, total, rating int
 	var serie string
 	for rows.Next() {
-		err := rows.Scan(&id, &serie, &actual, &total)
+		err := rows.Scan(&id, &serie, &actual, &total, &rating)
 		if err != nil {
 			log.Println("Error en scan:", err)
 			return buildResponse("500 Internal Server Error", "<h1>Error leyendo datos</h1>")
@@ -112,28 +116,35 @@ func handleIndex(db *sql.DB) string {
 			completado = " <strong>¡Completa!</strong>"
 		}
 
+		estrellas := ""
+		for i := 1; i <= 5; i++ {
+			if i <= rating {
+				estrellas += fmt.Sprintf(`<span class="estrella activa" onclick="setRating(%d, %d)">★</span>`, id, i)
+			} else {
+				estrellas += fmt.Sprintf(`<span class="estrella" onclick="setRating(%d, %d)">★</span>`, id, i)
+			}
+		}
+
 		html += fmt.Sprintf(
 			`<tr>
 				<td>%d</td>
 				<td>%s%s</td>
 				<td>%d</td>
 				<td>%d</td>
-				<td>
-					<progress value="%d" max="%d"></progress>
-				</td>
+				<td><progress value="%d" max="%d"></progress></td>
+				<td>%s</td>
 				<td>
 					<button class="btn-decrease" onclick="decreaseEpisode(%d)">-1</button>
 					<button class="btn-increase" onclick="nextEpisode(%d)">+1</button>
-					<button class="btn-delete" onclick="deleteSerie(%d)">🗑</button>
 					<button class="btn-edit" onclick="window.location.href='/edit?id=%d'">✏️</button>
+					<button class="btn-delete" onclick="deleteSerie(%d)">🗑</button>
 				</td>
 			</tr>`,
-			id, serie, completado, actual, total, actual, total, id, id, id, id,
+			id, serie, completado, actual, total, actual, total, estrellas, id, id, id, id,
 		)
 	}
 
 	html += `</table>
-	<br></br>
 	<a href="/create">Agregar una nueva serie</a>
 	<script src="/static/script.js"></script>
 	</body></html>`
@@ -381,6 +392,30 @@ func handleEdit(reader *bufio.Reader, contentLength int, db *sql.DB) string {
     if err != nil {
         log.Println("Error en update:", err)
         return buildResponse("500 Internal Server Error", "<h1>Error actualizando</h1>")
+    }
+
+    return "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nok"
+}
+
+func handleRating(path string, db *sql.DB) string {
+    parts := strings.SplitN(path, "?", 2)
+    if len(parts) < 2 {
+        return buildResponse("400 Bad Request", "<h1>Faltan parámetros</h1>")
+    }
+
+    params, _ := url.ParseQuery(parts[1])
+    seriesId := params.Get("series_id")
+    rating := params.Get("rating")
+
+    log.Printf("Rating serie id=%s: %s estrellas", seriesId, rating)
+
+    _, err := db.Exec(
+        "INSERT OR REPLACE INTO ratings (series_id, rating) VALUES (?, ?)",
+        seriesId, rating,
+    )
+    if err != nil {
+        log.Println("Error guardando rating:", err)
+        return buildResponse("500 Internal Server Error", "<h1>Error guardando rating</h1>")
     }
 
     return "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nok"
